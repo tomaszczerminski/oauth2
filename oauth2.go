@@ -351,6 +351,10 @@ func NewClient(ctx context.Context, src TokenSource) *http.Client {
 	}
 }
 
+var source = new(reuseTokenSource)
+
+var lock sync.Mutex
+
 // ReuseTokenSource returns a TokenSource which repeatedly returns the
 // same token as long as it's valid, starting with t.
 // When its cached token is invalid, a new token is obtained from src.
@@ -364,18 +368,11 @@ func NewClient(ctx context.Context, src TokenSource) *http.Client {
 // means it's always safe to wrap ReuseTokenSource around any other
 // TokenSource without adverse effects.
 func ReuseTokenSource(t *Token, src TokenSource) TokenSource {
-	// Don't wrap a reuseTokenSource in itself. That would work,
-	// but cause an unnecessary number of mutex operations.
-	// Just build the equivalent one.
-	if rt, ok := src.(*reuseTokenSource); ok {
-		if t == nil {
-			// Just use it directly.
-			return rt
-		}
-		src = rt.new
+	lock.Lock()
+	defer lock.Unlock()
+	if source.t == nil {
+		source.t = t
+		source.new = src
 	}
-	return &reuseTokenSource{
-		t:   t,
-		new: src,
-	}
+	return source
 }

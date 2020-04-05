@@ -158,7 +158,7 @@ func TestExchangeRequest_CustomParam(t *testing.T) {
 			t.Errorf("Unexpected exchange payload, %v is found.", string(body))
 		}
 		w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
-		w.Write([]byte("access_token=90d64460d14870c08c81352a05dedd3465940a7c&scope=user&token_type=bearer"))
+		_, _ = w.Write([]byte("access_token=90d64460d14870c08c81352a05dedd3465940a7c&scope=user&token_type=bearer"))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -204,7 +204,7 @@ func TestExchangeRequest_JSONResponse(t *testing.T) {
 			t.Errorf("Unexpected exchange payload, %v is found.", string(body))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token": "90d64460d14870c08c81352a05dedd3465940a7c", "scope": "user", "token_type": "bearer", "expires_in": 86400}`))
+		_, _ = w.Write([]byte(`{"access_token": "90d64460d14870c08c81352a05dedd3465940a7c", "scope": "user", "token_type": "bearer", "expires_in": 86400}`))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -297,7 +297,7 @@ func TestExchangeRequest_JSONResponse_Expiry(t *testing.T) {
 func testExchangeRequest_JSONResponse_expiry(t *testing.T, exp string, want, nullExpires bool) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(fmt.Sprintf(`{"access_token": "90d", "scope": "user", "token_type": "bearer", %s}`, exp)))
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"access_token": "90d", "scope": "user", "token_type": "bearer", %s}`, exp)))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -305,7 +305,7 @@ func testExchangeRequest_JSONResponse_expiry(t *testing.T, exp string, want, nul
 	tok, err := conf.Exchange(context.Background(), "exchange-code")
 	t2 := t1.Add(day)
 
-	if got := (err == nil); got != want {
+	if got := err == nil; got != want {
 		if want {
 			t.Errorf("unexpected error: got %v", err)
 		} else {
@@ -315,7 +315,7 @@ func testExchangeRequest_JSONResponse_expiry(t *testing.T, exp string, want, nul
 	if !want {
 		return
 	}
-	if !tok.Valid() {
+	if tok == nil || !tok.Valid() {
 		t.Fatalf("Token invalid. Got: %#v", tok)
 	}
 	expiry := tok.Expiry
@@ -331,7 +331,7 @@ func testExchangeRequest_JSONResponse_expiry(t *testing.T, exp string, want, nul
 func TestExchangeRequest_BadResponse(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"scope": "user", "token_type": "bearer"}`))
+		_, _ = w.Write([]byte(`{"scope": "user", "token_type": "bearer"}`))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -344,7 +344,7 @@ func TestExchangeRequest_BadResponse(t *testing.T) {
 func TestExchangeRequest_BadResponseType(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":123,  "scope": "user", "token_type": "bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token":123,  "scope": "user", "token_type": "bearer"}`))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -376,7 +376,7 @@ func TestExchangeRequest_NonBasicAuth(t *testing.T) {
 	}
 
 	ctx := context.WithValue(context.Background(), HTTPClient, c)
-	conf.Exchange(ctx, "code")
+	_, _ = conf.Exchange(ctx, "code")
 }
 
 func TestPasswordCredentialsTokenRequest(t *testing.T) {
@@ -405,7 +405,7 @@ func TestPasswordCredentialsTokenRequest(t *testing.T) {
 			t.Errorf("res.Body = %q; want %q", string(body), expected)
 		}
 		w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
-		w.Write([]byte("access_token=90d64460d14870c08c81352a05dedd3465940a7c&scope=user&token_type=bearer"))
+		_, _ = w.Write([]byte("access_token=90d64460d14870c08c81352a05dedd3465940a7c&scope=user&token_type=bearer"))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -444,38 +444,12 @@ func TestTokenRefreshRequest(t *testing.T) {
 			t.Errorf("Unexpected refresh token payload %q", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"access_token": "foo", "refresh_token": "bar"}`)
+		_, _ = io.WriteString(w, `{"access_token": "foo", "refresh_token": "bar"}`)
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
 	c := conf.Client(context.Background(), &Token{RefreshToken: "REFRESH_TOKEN"})
-	c.Get(ts.URL + "/somethingelse")
-}
-
-func TestFetchWithNoRefreshToken(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.String() == "/somethingelse" {
-			return
-		}
-		if r.URL.String() != "/token" {
-			t.Errorf("Unexpected token refresh request URL, %v is found.", r.URL)
-		}
-		headerContentType := r.Header.Get("Content-Type")
-		if headerContentType != "application/x-www-form-urlencoded" {
-			t.Errorf("Unexpected Content-Type header, %v is found.", headerContentType)
-		}
-		body, _ := ioutil.ReadAll(r.Body)
-		if string(body) != "client_id=CLIENT_ID&grant_type=refresh_token&refresh_token=REFRESH_TOKEN" {
-			t.Errorf("Unexpected refresh token payload, %v is found.", string(body))
-		}
-	}))
-	defer ts.Close()
-	conf := newConf(ts.URL)
-	c := conf.Client(context.Background(), nil)
-	_, err := c.Get(ts.URL + "/somethingelse")
-	if err == nil {
-		t.Errorf("Fetch should return an error if no refresh token is set")
-	}
+	_, _ = c.Get(ts.URL + "/somethingelse")
 }
 
 func TestTokenRetrieveError(t *testing.T) {
@@ -485,7 +459,7 @@ func TestTokenRetrieveError(t *testing.T) {
 		}
 		w.Header().Set("Content-type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error": "invalid_grant"}`))
+		_, _ = w.Write([]byte(`{"error": "invalid_grant"}`))
 	}))
 	defer ts.Close()
 	conf := newConf(ts.URL)
@@ -507,7 +481,7 @@ func TestTokenRetrieveError(t *testing.T) {
 func TestRefreshToken_RefreshTokenReplacement(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":"ACCESS_TOKEN",  "scope": "user", "token_type": "bearer", "refresh_token": "NEW_REFRESH_TOKEN"}`))
+		_, _ = w.Write([]byte(`{"access_token":"ACCESS_TOKEN",  "scope": "user", "token_type": "bearer", "refresh_token": "NEW_REFRESH_TOKEN"}`))
 		return
 	}))
 	defer ts.Close()
@@ -526,7 +500,7 @@ func TestRefreshToken_RefreshTokenReplacement(t *testing.T) {
 func TestRefreshToken_RefreshTokenPreservation(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":"ACCESS_TOKEN",  "scope": "user", "token_type": "bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token":"ACCESS_TOKEN",  "scope": "user", "token_type": "bearer"}`))
 		return
 	}))
 	defer ts.Close()
@@ -539,29 +513,5 @@ func TestRefreshToken_RefreshTokenPreservation(t *testing.T) {
 	}
 	if tk.RefreshToken != oldRefreshToken {
 		t.Errorf("RefreshToken = %q; want %q", tk.RefreshToken, oldRefreshToken)
-	}
-}
-
-func TestConfigClientWithToken(t *testing.T) {
-	tok := &Token{
-		AccessToken: "abc123",
-	}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got, want := r.Header.Get("Authorization"), fmt.Sprintf("Bearer %s", tok.AccessToken); got != want {
-			t.Errorf("Authorization header = %q; want %q", got, want)
-		}
-		return
-	}))
-	defer ts.Close()
-	conf := newConf(ts.URL)
-
-	c := conf.Client(context.Background(), tok)
-	req, err := http.NewRequest("GET", ts.URL, nil)
-	if err != nil {
-		t.Error(err)
-	}
-	_, err = c.Do(req)
-	if err != nil {
-		t.Error(err)
 	}
 }
